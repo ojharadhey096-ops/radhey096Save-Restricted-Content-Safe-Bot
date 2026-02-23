@@ -17,14 +17,15 @@ logging.basicConfig(
 )
 
 # Optimized Pyrogram client configuration for better stability
+# Increased sleep_threshold for large media uploads
 app = Client(
     ":RestrictBot:",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
     workers=20,
-    sleep_threshold=60,
-    max_concurrent_transmissions=3
+    sleep_threshold=300,  # 5 minutes for large file transfers
+    max_concurrent_transmissions=1  # Limit to 1 concurrent transfer to prevent timeouts
 )
 
 # Telethon client
