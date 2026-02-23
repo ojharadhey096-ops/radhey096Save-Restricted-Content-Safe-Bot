@@ -5,6 +5,7 @@ from safe_repo.core.func import subscribe
 from safe_repo.core.mongo import db as mdb
 from config import OWNER_ID
 from pyrogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+import random
 
 # ------------------- Start-Buttons ------------------- #
 
@@ -26,5 +27,12 @@ async def start(_, message):
     if data:
         session = data.get("session")
     status_text = "🔓 You are logged in." if session else "🔒 You are logged out."
-    await message.reply_text(text=script.START_TXT.format(message.from_user.mention) + f"\n\n{status_text}",
-                              reply_markup=buttons)
+    
+    # Get random motivational quote
+    quote = random.choice(script.MOTIVATIONAL_QUOTES)
+    
+    await message.reply_text(
+        text=script.START_TXT.format(message.from_user.mention) + 
+             f"\n\n{status_text}\n\n💭 **Daily Motivation:**\n\"{quote}\"",
+        reply_markup=buttons
+    )
