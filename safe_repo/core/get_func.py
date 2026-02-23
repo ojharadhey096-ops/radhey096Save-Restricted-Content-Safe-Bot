@@ -267,11 +267,8 @@ async def get_msg(userbot, sender, edit_id, msg_link, i, message):
             except Exception as e:
                 await app.edit_message_text(sender, edit_id, f'Failed to save: `{msg_link}`\n\nError: {str(e)}')
     finally:
-        # Ensure userbot is properly disconnected to prevent connection leaks
-        try:
-            await userbot.stop()
-        except Exception:
-            pass
+        # Cleanup any temporary files
+        pass
 
 
 async def copy_message_with_chat_id(client, sender, chat_id, message_id):

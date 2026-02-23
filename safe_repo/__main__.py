@@ -10,8 +10,11 @@ from aiojobs import create_scheduler
 pyrogram.utils.MIN_CHANNEL_ID = -1009999999999
 from safe_repo.core.mongo.plans_db import check_and_remove_expired_users
 
-loop = asyncio.get_event_loop()
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+loop = asyncio.get_event_loop()
 
 async def schedule_expiry_check():
     scheduler = await create_scheduler()
@@ -47,3 +50,5 @@ if __name__ == "__main__":
         logger.error(f"Critical error: {e}")
         # Attempt to restart the event loop
         loop.run_until_complete(safe_repo_boot())
+    finally:
+        logger.info("Bot process completed")

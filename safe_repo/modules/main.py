@@ -8,7 +8,12 @@ from config import API_ID, API_HASH
 from safe_repo.core.get_func import get_msg
 from safe_repo.core.func import *
 from safe_repo.core.mongo import db
-from pyrogram.errors import FloodWait
+from pyrogram.errors import FloodWait, SessionRevoked, AuthKeyDuplicated, AuthKeyUnregistered
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 
@@ -21,6 +26,7 @@ async def single_link(_, message):
     
     link = get_link(message.text) 
     
+    userbot = None
     try:
         join = await subscribe(_, message)
         if join == 1:
@@ -34,8 +40,11 @@ async def single_link(_, message):
             try:
                 userbot = Client(":userbot:", api_id=API_ID, api_hash=API_HASH, session_string=session)
                 await userbot.start()                
-            except:
+            except (SessionRevoked, AuthKeyDuplicated, AuthKeyUnregistered):
                 return await msg.edit_text("Login expired /login again...")
+            except Exception as e:
+                logger.error(f"Session start error: {e}")
+                return await msg.edit_text("Failed to start session. Please try again.")
         else:
             await msg.edit_text("Login in bot first ...")
             return
@@ -47,15 +56,21 @@ async def single_link(_, message):
             elif 't.me/' in link:
                 await get_msg(userbot, user_id, msg.id, link, 0, message)
         except Exception as e:
+            logger.error(f"Processing error: {e}")
             await msg.edit_text(f"Link: `{link}`\n\n**Error:** {str(e)}")
-        finally:
-            # Ensure userbot is properly disconnected
-            await userbot.stop()
-                    
+                     
     except FloodWait as fw:
         await msg.edit_text(f'Try again after {fw.x} seconds due to floodwait from telegram.')
     except Exception as e:
-        await msg.edit_text(f"Link: `{link}`\n\n**Error:** {str(e)}")
+        logger.error(f"Main error: {e}")
+        await app.send_message(user_id, f"Link: `{link}`\n\n**Error:** {str(e)}")
+    finally:
+        # Ensure userbot is properly disconnected
+        if userbot:
+            try:
+                await userbot.stop()
+            except:
+                pass
 
 
 users_loop = {}
@@ -66,7 +81,7 @@ async def batch_link(_, message):
     lol = await chk_user(message, user_id)
     if lol == 1:
         return    
-        
+    
     start = await app.ask(message.chat.id, text="Please send the start link.")
     start_id = start.text
     s = start_id.split("/")[-1]
@@ -77,10 +92,11 @@ async def batch_link(_, message):
     l = last_id.split("/")[-1]
     cl = int(l)
 
-    if cl - cs > 10:
-        await app.send_message(message.chat.id, "Only 10 messages allowed in batch size... Purchase premium to fly 💸")
+    if cl - cs > 100:
+        await app.send_message(message.chat.id, "Only 100 messages allowed in batch size... Purchase premium to fly 💸")
         return
     
+    userbot = None
     try:     
         data = await db.get_data(user_id)
         
@@ -89,8 +105,11 @@ async def batch_link(_, message):
             try:
                 userbot = Client(":userbot:", api_id=API_ID, api_hash=API_HASH, session_string=session)
                 await userbot.start()                
-            except:
+            except (SessionRevoked, AuthKeyDuplicated, AuthKeyUnregistered):
                 return await app.send_message(message.chat.id, "Your login expired ... /login again")
+            except Exception as e:
+                logger.error(f"Session start error: {e}")
+                return await app.send_message(message.chat.id, "Failed to start session. Please try again.")
         else:
             await app.send_message(message.chat.id, "Login in bot first ...")
 
@@ -112,20 +131,27 @@ async def batch_link(_, message):
                         await sleep_msg.delete()
                         await asyncio.sleep(2)                                                
                     except Exception as e:
-                        print(f"Error processing link {url}: {e}")
+                        logger.error(f"Error processing link {url}: {e}")
+                        await app.send_message(message.chat.id, f"Error processing link {url}: {str(e)}")
                         continue
                 else:
                     break
         except Exception as e:
+            logger.error(f"Batch processing error: {e}")
             await app.send_message(message.chat.id, f"Error: {str(e)}")
-        finally:
-            # Ensure userbot is properly disconnected
-            await userbot.stop()
-                    
+                     
     except FloodWait as fw:
         await app.send_message(message.chat.id, f'Try again after {fw.x} seconds due to floodwait from Telegram.')
     except Exception as e:
+        logger.error(f"Main batch error: {e}")
         await app.send_message(message.chat.id, f"Error: {str(e)}")
+    finally:
+        # Ensure userbot is properly disconnected
+        if userbot:
+            try:
+                await userbot.stop()
+            except:
+                pass
 
 
 @app.on_message(filters.command("cancel"))
