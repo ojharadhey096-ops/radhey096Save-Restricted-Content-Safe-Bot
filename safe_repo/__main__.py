@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import logging
 import pyrogram.utils
 from pyrogram import idle
 from safe_repo.modules import ALL_MODULES
@@ -10,23 +11,39 @@ pyrogram.utils.MIN_CHANNEL_ID = -1009999999999
 from safe_repo.core.mongo.plans_db import check_and_remove_expired_users
 
 loop = asyncio.get_event_loop()
+logger = logging.getLogger(__name__)
 
 async def schedule_expiry_check():
     scheduler = await create_scheduler()
     while True:
-        await scheduler.spawn(check_and_remove_expired_users())
+        try:
+            await scheduler.spawn(check_and_remove_expired_users())
+        except Exception as e:
+            logger.error(f"Error in expiry check: {e}")
         await asyncio.sleep(3600)  # Check every hour
 
 async def safe_repo_boot():
-    for all_module in ALL_MODULES:
-        importlib.import_module("safe_repo.modules." + all_module)
-    print("»»»» ʙᴏᴛ ᴅᴇᴘʟᴏʏ sᴜᴄᴄᴇssғᴜʟʟʏ ✨ 🎉")
+    try:
+        for all_module in ALL_MODULES:
+            importlib.import_module("safe_repo.modules." + all_module)
+        logger.info("»»»» ʙᴏᴛ ᴅᴇᴘʟᴏʏ sᴜᴄᴄᴇssғᴜʟʟʏ ✨ 🎉")
 
-    # Start the background task for checking expired users
-    asyncio.create_task(schedule_expiry_check())
+        # Start the background task for checking expired users
+        asyncio.create_task(schedule_expiry_check())
 
-    await idle()
-    print("»» ɢᴏᴏᴅ ʙʏᴇ ! sᴛᴏᴘᴘɪɴɢ ʙᴏᴛ.")
+        await idle()
+        logger.info("»» ɢᴏᴏᴅ ʙʏᴇ ! sᴛᴏᴘᴘɪɴɢ ʙᴏᴛ.")
+    except Exception as e:
+        logger.error(f"Error in bot boot: {e}")
+        # Attempt to restart the bot after 5 seconds
+        logger.info("Attempting to restart bot in 5 seconds...")
+        await asyncio.sleep(5)
+        await safe_repo_boot()
 
 if __name__ == "__main__":
-    loop.run_until_complete(safe_repo_boot())
+    try:
+        loop.run_until_complete(safe_repo_boot())
+    except Exception as e:
+        logger.error(f"Critical error: {e}")
+        # Attempt to restart the event loop
+        loop.run_until_complete(safe_repo_boot())

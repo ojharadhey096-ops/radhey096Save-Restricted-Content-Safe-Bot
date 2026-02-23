@@ -6,7 +6,7 @@ import logging
 from pyromod import listen
 from pyrogram import Client
 from config import API_ID, API_HASH, BOT_TOKEN
-from telethon.sync import TelegramClient
+from telethon import TelegramClient
 
 
 loop = asyncio.get_event_loop()
@@ -16,18 +16,19 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-sex = TelegramClient('sexrepo', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
-
+# Optimized Pyrogram client configuration for better stability
 app = Client(
     ":RestrictBot:",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
-    workers=10,
-    sleep_threshold=20,
-    max_concurrent_transmissions=5
+    workers=20,
+    sleep_threshold=60,
+    max_concurrent_transmissions=3
 )
 
+# Telethon client
+sex = TelegramClient('sexrepo', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 
 async def restrict_bot():
@@ -40,8 +41,10 @@ async def restrict_bot():
         BOT_NAME = getme.first_name + " " + getme.last_name
     else:
         BOT_NAME = getme.first_name
+    logging.info(f"Bot initialized: {BOT_NAME} (@{BOT_USERNAME})")
 
 
+# Run initialization
 loop.run_until_complete(restrict_bot())
 
 

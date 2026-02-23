@@ -44,12 +44,13 @@ async def single_link(_, message):
             if 't.me/+' in link:
                 q = await userbot_join(userbot, link)
                 await msg.edit_text(q)
-                return
-                                        
-            if 't.me/' in link:
+            elif 't.me/' in link:
                 await get_msg(userbot, user_id, msg.id, link, 0, message)
         except Exception as e:
             await msg.edit_text(f"Link: `{link}`\n\n**Error:** {str(e)}")
+        finally:
+            # Ensure userbot is properly disconnected
+            await userbot.stop()
                     
     except FloodWait as fw:
         await msg.edit_text(f'Try again after {fw.x} seconds due to floodwait from telegram.')
@@ -117,6 +118,9 @@ async def batch_link(_, message):
                     break
         except Exception as e:
             await app.send_message(message.chat.id, f"Error: {str(e)}")
+        finally:
+            # Ensure userbot is properly disconnected
+            await userbot.stop()
                     
     except FloodWait as fw:
         await app.send_message(message.chat.id, f'Try again after {fw.x} seconds due to floodwait from Telegram.')
