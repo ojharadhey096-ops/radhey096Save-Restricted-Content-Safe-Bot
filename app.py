@@ -1,7 +1,26 @@
 import os
+import time
+import threading
+import requests
 from flask import Flask
 
 app = Flask(__name__)
+
+# Auto-ping settings
+AUTO_PING_ENABLED = True
+AUTO_PING_INTERVAL = 300  # 5 minutes in seconds
+APP_URL = None
+
+
+def auto_ping():
+    """Background task to keep the app awake by pinging itself periodically"""
+    while AUTO_PING_ENABLED and APP_URL:
+        try:
+            response = requests.get(APP_URL)
+            print(f"Auto-ping successful: {response.status_code}")
+        except Exception as e:
+            print(f"Auto-ping failed: {str(e)}")
+        time.sleep(AUTO_PING_INTERVAL)
 
 
 @app.route('/')
@@ -32,7 +51,25 @@ def home():
     """
 
 
+@app.route('/health')
+def health_check():
+    """Health check endpoint for monitoring"""
+    return "OK", 200
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    
+    # Determine the app URL for auto-ping
+    # For Render, the URL will be provided in the RENDER_EXTERNAL_URL environment variable
+    if 'RENDER_EXTERNAL_URL' in os.environ:
+        APP_URL = os.environ['RENDER_EXTERNAL_URL']
+        print(f"App URL: {APP_URL}")
+        
+        # Start auto-ping background task
+        if AUTO_PING_ENABLED:
+            ping_thread = threading.Thread(target=auto_ping, daemon=True)
+            ping_thread.start()
+            print(f"Auto-ping service started (interval: {AUTO_PING_INTERVAL} seconds)")
+    
     app.run(host='0.0.0.0', port=port)
