@@ -1,34 +1,81 @@
-import datetime
-from motor.motor_asyncio import AsyncIOMotorClient as MongoCli
-from config import MONGO_DB
+import os
+import json
+import asyncio
+from datetime import datetime, timezone
 
-mongo = MongoCli(MONGO_DB)
-db = mongo.premium
-db = db.premium_db
+STORAGE = os.path.join(os.path.dirname(__file__), "plans_storage.json")
+
+def _read():
+    if not os.path.exists(STORAGE):
+        return {}
+    with open(STORAGE, "r") as f:
+        return json.load(f)
+
+def _write(data):
+    with open(STORAGE, "w") as f:
+        json.dump(data, f)
 
 async def add_premium(user_id, expire_date):
-    data = await check_premium(user_id)
-    if data and data.get("_id"):
-        await db.update_one({"_id": user_id}, {"$set": {"expire_date": expire_date}})
-    else:
-        await db.insert_one({"_id": user_id, "expire_date": expire_date})
+    data = await asyncio.to_thread(_read)
+    data[str(user_id)] = {"expire_date": expire_date.isoformat() if hasattr(expire_date, 'isoformat') else str(expire_date)}
+    await asyncio.to_thread(_write, data)
 
 async def remove_premium(user_id):
-    await db.delete_one({"_id": user_id})
+    data = await asyncio.to_thread(_read)
+    data.pop(str(user_id), None)
+    await asyncio.to_thread(_write, data)
 
 async def check_premium(user_id):
-    return await db.find_one({"_id": user_id})
+    data = await asyncio.to_thread(_read)
+    entry = data.get(str(user_id))
+    if not entry:
+        return None
+    try:
+        expire = datetime.fromisoformat(entry.get("expire_date")).replace(tzinfo=timezone.utc)
+    except Exception:
+        expire = None
+    return {"_id": int(user_id), "expire_date": expire}
+
+from config import OWNER_ID
 
 async def premium_users():
-    id_list = []
-    async for data in db.find():
-        id_list.append(data["_id"])
-    return id_list
+    data = await asyncio.to_thread(_read)
+    users = [int(k) for k in data.keys()]
+    # Add owner to premium users list if not already present (lifetime premium)
+    for owner_id in OWNER_ID:
+        if owner_id not in users:
+            users.append(owner_id)
+    return users
+
+async def check_premium(user_id):
+    data = await asyncio.to_thread(_read)
+    entry = data.get(str(user_id))
+    
+    # Check if user is owner - if yes, return permanent premium
+    if user_id in OWNER_ID:
+        return {"_id": user_id, "expire_date": None}  # None indicates lifetime premium
+    
+    if not entry:
+        return None
+    try:
+        expire = datetime.fromisoformat(entry.get("expire_date")).replace(tzinfo=timezone.utc)
+    except Exception:
+        expire = None
+    return {"_id": int(user_id), "expire_date": expire}
 
 async def check_and_remove_expired_users():
-    current_time = datetime.datetime.utcnow()
-    async for data in db.find():
-        expire_date = data.get("expire_date")
-        if expire_date and expire_date < current_time:
-            await remove_premium(data["_id"])
-            print(f"Removed user {data['_id']} due to expired plan.")
+    data = await asyncio.to_thread(_read)
+    now = datetime.now(timezone.utc)
+    removed = []
+    for k, v in list(data.items()):
+        try:
+            expire = datetime.fromisoformat(v.get("expire_date")).replace(tzinfo=timezone.utc)
+            if expire and expire < now:
+                data.pop(k, None)
+                removed.append(k)
+        except Exception:
+            continue
+    if removed:
+        await asyncio.to_thread(_write, data)
+    for r in removed:
+        print(f"Removed user {r} due to expired plan.")

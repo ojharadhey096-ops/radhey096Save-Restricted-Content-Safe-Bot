@@ -1,42 +1,44 @@
-#safe_repo
+import os
+import json
+import asyncio
 
-from config import MONGO_DB
-from motor.motor_asyncio import AsyncIOMotorClient as MongoCli
+STORAGE = os.path.join(os.path.dirname(__file__), "users_storage.json")
 
+def _read():
+    if not os.path.exists(STORAGE):
+        return {"users": []}
+    with open(STORAGE, "r") as f:
+        return json.load(f)
 
-mongo = MongoCli(MONGO_DB)
-db = mongo.users
-db = db.users_db
-
+def _write(data):
+    with open(STORAGE, "w") as f:
+        json.dump(data, f)
 
 async def get_users():
-  user_list = []
-  async for user in db.users.find({"user": {"$gt": 0}}):
-    user_list.append(user['user'])
-  return user_list
-
+    data = await asyncio.to_thread(_read)
+    return data.get("users", [])
 
 async def get_user(user):
-  users = await get_users()
-  if user in users:
-    return True
-  else:
-    return False
+    users = await get_users()
+    return user in users
 
 async def add_user(user):
-  users = await get_users()
-  if user in users:
-    return
-  else:
-    await db.users.insert_one({"user": user})
-
+    data = await asyncio.to_thread(_read)
+    users = data.get("users", [])
+    if user in users:
+        return
+    users.append(user)
+    data["users"] = users
+    await asyncio.to_thread(_write, data)
 
 async def del_user(user):
-  users = await get_users()
-  if not user in users:
-    return
-  else:
-    await db.users.delete_one({"user": user})
-    
+    data = await asyncio.to_thread(_read)
+    users = data.get("users", [])
+    if user in users:
+        users.remove(user)
+        data["users"] = users
+        await asyncio.to_thread(_write, data)
+
+
 
 

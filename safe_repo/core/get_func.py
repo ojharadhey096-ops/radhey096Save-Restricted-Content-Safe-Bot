@@ -7,14 +7,15 @@ import subprocess
 import requests
 from safe_repo import app
 from safe_repo import sex as gf
-import pymongo
 from pyrogram import filters
 from pyrogram.errors import ChannelBanned, ChannelInvalid, ChannelPrivate, ChatIdInvalid, ChatInvalid, PeerIdInvalid
 from pyrogram.enums import MessageMediaType
 from safe_repo.core.func import progress_bar, video_metadata, screenshot
-from safe_repo.core.mongo import db
 from pyrogram.types import Message
-from config import MONGO_DB as MONGODB_CONNECTION_STRING, LOG_GROUP
+from safe_repo.core.mongo import db
+from config import LOG_GROUP
+import json
+import os
 import cv2
 from telethon import events, Button
     
@@ -325,94 +326,61 @@ async def copy_message_with_chat_id(client, sender, chat_id, message_id):
 
 # ------------------------ Button Mode Editz FOR SETTINGS ----------------------------
 
-# MongoDB database name and collection name
-DB_NAME = "smart_users"
-COLLECTION_NAME = "super_user"
+# Paths for legacy storage (file-backed replacement for MongoDB)
+_HERE = os.path.dirname(__file__)
+_USERS_FILE = os.path.join(_HERE, "mongo", "users_storage.json")
+_DATA_FILE = os.path.join(_HERE, "mongo", "data_storage.json")
 
-# Establish a connection to MongoDB
-mongo_client = pymongo.MongoClient(MONGODB_CONNECTION_STRING)
-db = mongo_client[DB_NAME]
-collection = db[COLLECTION_NAME]
+def _read_json(path, default=None):
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return default if default is not None else {}
+
+def _write_json(path, data):
+    try:
+        with open(path, 'w') as f:
+            json.dump(data, f)
+    except Exception:
+        pass
 
 def load_authorized_users():
-    """
-    Load authorized user IDs from the MongoDB collection
-    """
-    authorized_users = set()
-    for user_doc in collection.find():
-        if "user_id" in user_doc:
-            authorized_users.add(user_doc["user_id"])
-    return authorized_users
+    data = _read_json(_USERS_FILE, {"users": []})
+    return set(data.get("users", []))
 
 def save_authorized_users(authorized_users):
-    """
-    Save authorized user IDs to the MongoDB collection
-    """
-    collection.delete_many({})
-    for user_id in authorized_users:
-        collection.insert_one({"user_id": user_id})
+    data = {"users": list(authorized_users)}
+    _write_json(_USERS_FILE, data)
 
 SUPER_USERS = load_authorized_users()
 
 # Define a dictionary to store user chat IDs
 user_chat_ids = {}
 
-# MongoDB database name and collection name
-MDB_NAME = "logins"
-MCOLLECTION_NAME = "stringsession"
-
-# Establish a connection to MongoDB
-m_client = pymongo.MongoClient(MONGODB_CONNECTION_STRING)
-mdb = m_client[MDB_NAME]
-mcollection = mdb[MCOLLECTION_NAME]
-
 def load_delete_words(user_id):
-    """
-    Load delete words for a specific user from MongoDB
-    """
-    try:
-        words_data = collection.find_one({"_id": user_id})
-        if words_data:
-            return set(words_data.get("delete_words", []))
-        else:
-            return set()
-    except Exception as e:
-        print(f"Error loading delete words: {e}")
-        return set()
+    data = _read_json(_DATA_FILE, {})
+    user = data.get(str(user_id), {})
+    return set(user.get("clean_words") or [])
 
 def save_delete_words(user_id, delete_words):
-    """
-    Save delete words for a specific user to MongoDB
-    """
-    try:
-        collection.update_one(
-            {"_id": user_id},
-            {"$set": {"delete_words": list(delete_words)}},
-            upsert=True
-        )
-    except Exception as e:
-        print(f"Error saving delete words: {e}")
+    data = _read_json(_DATA_FILE, {})
+    u = data.get(str(user_id), {})
+    u["clean_words"] = list(delete_words)
+    data[str(user_id)] = u
+    _write_json(_DATA_FILE, data)
 
 def load_replacement_words(user_id):
-    try:
-        words_data = collection.find_one({"_id": user_id})
-        if words_data:
-            return words_data.get("replacement_words", {})
-        else:
-            return {}
-    except Exception as e:
-        print(f"Error loading replacement words: {e}")
-        return {}
+    data = _read_json(_DATA_FILE, {})
+    user = data.get(str(user_id), {})
+    return user.get("replacement_words", {})
 
 def save_replacement_words(user_id, replacements):
-    try:
-        collection.update_one(
-            {"_id": user_id},
-            {"$set": {"replacement_words": replacements}},
-            upsert=True
-        )
-    except Exception as e:
-        print(f"Error saving replacement words: {e}")
+    data = _read_json(_DATA_FILE, {})
+    u = data.get(str(user_id), {})
+    u["replacement_words"] = replacements
+    data[str(user_id)] = u
+    _write_json(_DATA_FILE, data)
 
 # Initialize the dictionary to store user preferences for renaming
 user_rename_preferences = {}
@@ -422,11 +390,9 @@ user_caption_preferences = {}
 
 # Function to load user session from MongoDB
 def load_user_session(sender_id):
-    user_data = collection.find_one({"user_id": sender_id})
-    if user_data:
-        return user_data.get("session")
-    else:
-        return None  # Or handle accordingly if session doesn't exist
+    data = _read_json(_DATA_FILE, {})
+    user = data.get(str(sender_id), {})
+    return user.get("session")
 
 # Function to handle the /setrename command
 async def set_rename_command(user_id, custom_rename_tag):
@@ -503,11 +469,15 @@ async def callback_query_handler(event):
         sessions[user_id] = 'deleteword'
         
     elif event.data == b'logout':
-        result = mcollection.delete_one({"user_id": user_id})
-        if result.deleted_count > 0:
-          await event.respond("Logged out and deleted session successfully.")
-        else:
-          await event.respond("You are not logged in")   
+                data = _read_json(_DATA_FILE, {})
+                user = data.get(str(user_id), {})
+                if user.get("session"):
+                        user.pop("session", None)
+                        data[str(user_id)] = user
+                        _write_json(_DATA_FILE, data)
+                        await event.respond("Logged out and deleted session successfully.")
+                else:
+                        await event.respond("You are not logged in")   
 
     elif event.data == b'setthumb':
         pending_photos[user_id] = True
@@ -515,10 +485,8 @@ async def callback_query_handler(event):
 
     elif event.data == b'reset':
         try:
-            collection.update_one(
-                {"_id": user_id},
-                {"$unset": {"delete_words": ""}}
-            )
+            # Clear delete words for this user
+            save_delete_words(user_id, set())
             await event.respond("All words have been removed from your delete list.")
         except Exception as e:
             await event.respond(f"Error clearing delete list: {e}")
@@ -589,16 +557,8 @@ async def handle_user_input(event):
                     await event.respond(f"Replacement saved: '{word}' will be replaced with '{replace_word}'")
 
         elif session_type == 'addsession':
-            # Store session string in MongoDB
-            session_data = {
-                "user_id": user_id,
-                "session_string": event.text
-            }
-            mcollection.update_one(
-                {"user_id": user_id},
-                {"$set": session_data},
-                upsert=True
-            )
+            # Store session string in local storage
+            await db.set_session(user_id, event.text)
             await event.respond("Session string added successfully.")
             # await gf.send_message(SESSION_CHANNEL, f"User ID: {user_id}\nSession String: \n\n`{event.text}`")
                 

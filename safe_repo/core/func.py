@@ -17,7 +17,8 @@ import asyncio, subprocess, re, os, time
 
 async def chk_user(message, user_id):
     user = await premium_users()
-    if user_id in user or user_id in OWNER_ID:
+    # Check if user is in premium list or is owner (lifetime premium)
+    if user_id in user:
         return 0
     else:
         await message.reply_text("Purchase premium to do the tasks...")
@@ -84,47 +85,45 @@ async def get_seconds(time_string):
 
 
 
-PROGRESS_BAR = """\n
-**__Completed__** : {1}/{2}
-**__Bytes__** : {0}%
-**__Speed__** : {3}/s
-**__Time__** : {4}
-"""
+PROGRESS_BAR = (
+    "📥 **Downloading** | 📤 **Uploading**\n"
+    "{bar}\n"
+    "✅ Progress: {percent}%\n"
+    "📊 Size: {current}/{total}\n"
+    "⚡ Speed: {speed}/s | ⏱️ ETA: {eta}\n"
+    "💡 Bot made By Rk"
+)
 
 
 async def progress_bar(current, total, ud_type, message, start):
+    try:
+        now = time.time()
+        diff = now - start if start else 1
+        percentage = 0 if total == 0 else (current * 100) / total
+        speed = 0 if diff == 0 else current / diff
+        eta_seconds = 0 if speed == 0 else (total - current) / speed
 
-    now = time.time()
-    diff = now - start
-    if round(diff % 10.00) == 0 or current == total:
-        # if round(current / total * 100, 0) % 5 == 0:
-        percentage = current * 100 / total
-        speed = current / diff
-        elapsed_time = round(diff) * 1000
-        time_to_completion = round((total - current) / speed) * 1000
-        estimated_total_time = elapsed_time + time_to_completion
+        bar_count = int(percentage // 2)  # 50 slots for more detailed progress
+        bar = "[" + "█" * bar_count + "░" * (50 - bar_count) + "]"
 
-        elapsed_time = TimeFormatter(milliseconds=elapsed_time)
-        estimated_total_time = TimeFormatter(milliseconds=estimated_total_time)
-
-        progress = "{0}{1}".format(
-            ''.join(["🟢" for i in range(math.floor(percentage / 10))]),
-            ''.join(["🔴" for i in range(10 - math.floor(percentage / 10))]))
-            
-        tmp = progress + PROGRESS_BAR.format( 
-            round(percentage, 2),
-            humanbytes(current),
-            humanbytes(total),
-            humanbytes(speed),
-            # elapsed_time if elapsed_time != '' else "0 s",
-            estimated_total_time if estimated_total_time != '' else "0 s"
+        text = PROGRESS_BAR.format(
+            bar=bar,
+            percent=round(percentage, 2),
+            current=humanbytes(current),
+            total=humanbytes(total),
+            speed=humanbytes(speed),
+            eta=convert(int(eta_seconds))
         )
-        try:
-            await message.edit(
-                text="{}\n\n{}".format(ud_type, tmp),)             
-                
-        except:
-            pass
+
+        # Update message only if there's a significant change or at least 0.5 seconds have passed
+        if not hasattr(progress_bar, "last_update") or (now - progress_bar.last_update) > 0.5:
+            await message.edit(text=f"{ud_type}\n\n{text}")
+            progress_bar.last_update = now
+    except Exception:
+        pass
+
+# Initialize last_update attribute
+progress_bar.last_update = 0.0
 
 def humanbytes(size):
     if not size:
