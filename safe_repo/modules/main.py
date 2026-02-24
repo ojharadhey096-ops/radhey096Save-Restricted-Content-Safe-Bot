@@ -7,7 +7,7 @@ from safe_repo import app
 from config import API_ID, API_HASH
 from safe_repo.core.get_func import get_msg
 from safe_repo.core.func import *
-from safe_repo.core.mongo import db
+from safe_repo.core.mongo import db, plans_db
 from pyrogram.errors import FloodWait, SessionRevoked, AuthKeyDuplicated, AuthKeyUnregistered
 import logging
 
@@ -92,7 +92,9 @@ async def batch_link(_, message):
     l = last_id.split("/")[-1]
     cl = int(l)
 
-    if cl - cs > 100:
+    # Check if user is premium before enforcing batch size limit
+    is_premium = await plans_db.check_premium(user_id)
+    if not is_premium and cl - cs > 100:
         await app.send_message(message.chat.id, "Only 100 messages allowed in batch size... Purchase premium to fly 💸")
         return
     

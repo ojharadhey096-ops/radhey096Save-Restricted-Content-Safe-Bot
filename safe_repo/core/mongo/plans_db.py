@@ -38,21 +38,27 @@ async def check_premium(user_id):
 
 from config import OWNER_ID
 
+# List of users with lifetime premium access
+PREMIUM_USERS = [7453797299, 8175151355, 8552899459]
+
 async def premium_users():
     data = await asyncio.to_thread(_read)
     users = [int(k) for k in data.keys()]
-    # Add owner to premium users list if not already present (lifetime premium)
+    # Add owner and premium users to premium users list if not already present (lifetime premium)
     for owner_id in OWNER_ID:
         if owner_id not in users:
             users.append(owner_id)
+    for premium_user in PREMIUM_USERS:
+        if premium_user not in users:
+            users.append(premium_user)
     return users
 
 async def check_premium(user_id):
     data = await asyncio.to_thread(_read)
     entry = data.get(str(user_id))
     
-    # Check if user is owner - if yes, return permanent premium
-    if user_id in OWNER_ID:
+    # Check if user is owner or in premium users list - if yes, return permanent premium
+    if user_id in OWNER_ID or user_id in PREMIUM_USERS:
         return {"_id": user_id, "expire_date": None}  # None indicates lifetime premium
     
     if not entry:
