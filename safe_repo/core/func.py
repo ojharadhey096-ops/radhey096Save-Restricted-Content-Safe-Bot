@@ -3,10 +3,14 @@
 
 import math
 import time , re
+import logging
 from pyrogram import enums
 from config import CHANNEL_ID, OWNER_ID 
 from safe_repo.core import script
 from safe_repo.core.mongo.plans_db import premium_users
+
+# Configure logging
+logger = logging.getLogger(__name__)
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import cv2
 from pyrogram.errors import FloodWait, InviteHashInvalid, InviteHashExpired, UserAlreadyParticipant, UserNotParticipant
@@ -115,11 +119,13 @@ async def progress_bar(current, total, ud_type, message, start):
             eta=convert(int(eta_seconds))
         )
 
-        # Update message only if there's a significant change or at least 0.5 seconds have passed
-        if not hasattr(progress_bar, "last_update") or (now - progress_bar.last_update) > 0.5:
+        # Update message only if there's a significant change or at least 1 second has passed (more reliable)
+        if not hasattr(progress_bar, "last_update") or (now - progress_bar.last_update) > 1.0:
             await message.edit(text=f"{ud_type}\n\n{text}")
             progress_bar.last_update = now
-    except Exception:
+    except Exception as e:
+        # Log error but continue processing
+        logger.error(f"Progress bar error: {e}")
         pass
 
 # Initialize last_update attribute

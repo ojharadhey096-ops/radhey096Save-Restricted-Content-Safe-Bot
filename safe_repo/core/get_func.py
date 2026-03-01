@@ -5,6 +5,11 @@ import time
 import os
 import subprocess
 import requests
+from datetime import datetime as dt
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 from safe_repo import app
 from safe_repo import sex as gf
 from pyrogram import filters
@@ -78,10 +83,47 @@ async def get_msg(userbot, sender, edit_id, msg_link, i, message):
                         return
                 
                 edit = await app.edit_message_text(sender, edit_id, "Trying to Download...")
-                file = await userbot.download_media(
-                    msg,
-                    progress=progress_bar,
-                    progress_args=("**__Downloading: __**\n",edit,time.time()))
+                # Add timeout and retry mechanism for downloads
+                max_retries = 3
+                retry_delay = 5  # seconds
+                file = None
+                
+                for attempt in range(max_retries):
+                    try:
+                        # Use larger timeout and progress updates for better reliability
+                        file = await asyncio.wait_for(
+                            userbot.download_media(
+                                msg,
+                                progress=progress_bar,
+                                progress_args=("**__Downloading: __**\n", edit, time.time())
+                            ),
+                            timeout=3600  # 1 hour timeout for large files
+                        )
+                        break  # Success, exit loop
+                    except asyncio.TimeoutError:
+                        await app.edit_message_text(
+                            sender, 
+                            edit_id, 
+                            f"Download timed out. Attempt {attempt + 1}/{max_retries}..."
+                        )
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay)
+                    except Exception as e:
+                        await app.edit_message_text(
+                            sender, 
+                            edit_id, 
+                            f"Download failed: {str(e)}. Attempt {attempt + 1}/{max_retries}..."
+                        )
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(retry_delay)
+                
+                if not file:
+                    await app.edit_message_text(
+                        sender, 
+                        edit_id, 
+                        "Failed to download media after multiple attempts. Please try again later."
+                    )
+                    return
                 
                 custom_rename_tag = get_user_rename_preference(chatx)
                 last_dot_index = str(file).rfind('.')
@@ -268,7 +310,20 @@ async def get_msg(userbot, sender, edit_id, msg_link, i, message):
                 await app.edit_message_text(sender, edit_id, f'Failed to save: `{msg_link}`\n\nError: {str(e)}')
     finally:
         # Cleanup any temporary files
-        pass
+        try:
+            if 'file' in locals() and file and os.path.exists(file):
+                os.remove(file)
+            if 'thumb_path' in locals() and thumb_path and os.path.exists(thumb_path) and thumb_path != f'{sender}.jpg':
+                os.remove(thumb_path)
+            # Also clean up any leftover screenshot files
+            for f in os.listdir('.'):
+                if f.endswith('.jpg') and f.startswith(dt.now().strftime('%Y-%m-%d')):
+                    try:
+                        os.remove(f)
+                    except:
+                        pass
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
 
 
 async def copy_message_with_chat_id(client, sender, chat_id, message_id):
